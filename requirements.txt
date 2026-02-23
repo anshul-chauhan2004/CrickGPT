@@ -2,6 +2,4 @@ streamlit
 tensorflow-cpu
 numpy
 pillow
-gTTS
-requests
 edge-tts
