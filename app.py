@@ -1,9 +1,10 @@
+import edge_tts
+import asyncio
 import tensorflow as tf
 import streamlit as st
 import numpy as np
 from tensorflow.keras.utils import load_img, img_to_array
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
-from gtts import gTTS
 import tempfile
 import uuid
 import os
@@ -31,6 +32,14 @@ commentator_mode = st.sidebar.selectbox(
     ]
 )
 
+# ================= VOICE MAP (REAL COMMENTATORS) =================
+VOICE_MAP = {
+    "Neutral Analyst": "en-GB-RyanNeural",
+    "Excited IPL Commentator (Hindi)": "hi-IN-MadhurNeural",
+    "Radio Commentator": "en-GB-SoniaNeural",
+    "Funny Commentator": "en-US-GuyNeural"
+}
+
 # ================= LOAD MODEL =================
 @st.cache_resource
 def load_model():
@@ -55,7 +64,7 @@ def generate_commentary(label, confidence, mode):
     base = display_names[label]
 
     if mode == "Neutral Analyst":
-        return f"The batter executes a {base}. The AI is {confidence:.1f}% confident. Excellent balance and technique.", "en", False
+        return f"The batter executes a {base}. The AI is {confidence:.1f}% confident. Excellent balance and technique."
 
     elif mode == "Excited IPL Commentator (Hindi)":
         hindi_map = {
@@ -64,19 +73,22 @@ def generate_commentary(label, confidence, mode):
             "Pull Shot": "शॉर्ट बॉल पर जोरदार पुल शॉट!",
             "Sweep Shot": "बेहतरीन स्वीप शॉट खेला गया!"
         }
-        return hindi_map[base] + " दर्शक झूम उठे हैं!", "hi", False
+        return hindi_map[base] + " दर्शक झूम उठे हैं!"
 
     elif mode == "Radio Commentator":
-        return f"He moves onto the front foot... meets it sweetly... and that beautiful {base} races away to the boundary!", "en", True
+        return f"He moves onto the front foot... meets it sweetly... and that beautiful {base} races away to the boundary!"
 
     else:
-        return f"Ball said I am safe... batter said not today! BOOM! That {base} has been couriered directly to the boundary!", "en", False
+        return f"Ball said I am safe... batter said not today! BOOM! That {base} has been couriered directly to the boundary!"
 
-# ================= TEXT TO SPEECH =================
-def create_audio(text, lang, slow):
+# ================= TEXT TO SPEECH (REAL AI VOICES) =================
+async def generate_voice(text, voice, filename):
+    communicate = edge_tts.Communicate(text=text, voice=voice)
+    await communicate.save(filename)
+
+def create_audio(text, voice):
     filename = f"audio_{uuid.uuid4().hex}.mp3"
-    tts = gTTS(text=text, lang=lang, slow=slow)
-    tts.save(filename)
+    asyncio.run(generate_voice(text, voice, filename))
     return filename
 
 # ================= IMAGE PREDICTION =================
@@ -91,7 +103,7 @@ if uploaded_file:
     # LEFT
     with col1:
         st.subheader("Uploaded Image")
-        st.image(uploaded_file, use_container_width=True)
+        st.image(uploaded_file, width='stretch')
 
     # PREPROCESS
     temp = tempfile.NamedTemporaryFile(delete=False)
@@ -124,16 +136,21 @@ if uploaded_file:
         st.progress(int(confidence))
         st.markdown(f"### Confidence: **{confidence:.2f}%**")
 
-        commentary, lang, slow = generate_commentary(predicted_label, confidence, commentator_mode)
+        commentary = generate_commentary(predicted_label, confidence, commentator_mode)
 
         st.markdown("### 🎙 AI Commentary")
         st.info(commentary)
 
+        # PLAY BUTTON WITH DIFFERENT VOICES
         if st.button("🔊 Play Commentary"):
-            audio_file = create_audio(commentary, lang, slow)
+
+            selected_voice = VOICE_MAP[commentator_mode]
+            audio_file = create_audio(commentary, selected_voice)
+
             audio_bytes = open(audio_file, "rb").read()
             st.audio(audio_bytes, format="audio/mp3")
 
+        # Feedback
         if confidence > 85:
             st.success("🔥 Perfect Recognition!")
         elif confidence > 65:
@@ -166,4 +183,4 @@ if st.button("Show Example Shot"):
 
             img = Image.open(img_path)
 
-            st.image(img, caption=f"Example of {display_names[shot_choice]}", use_container_width=True)
+            st.image(img, caption=f"Example of {display_names[shot_choice]}", width='stretch')
