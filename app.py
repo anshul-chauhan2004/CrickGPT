@@ -8,7 +8,7 @@ import tempfile
 import uuid
 import os
 
-# ---------------- PAGE ----------------
+# ================= PAGE =================
 st.set_page_config(page_title="CrickGPT", page_icon="🏏", layout="wide")
 
 st.markdown("""
@@ -17,26 +17,30 @@ st.markdown("""
 <hr>
 """, unsafe_allow_html=True)
 
-# ---------------- COMMENTATOR MODE ----------------
+# ================= COMMENTATOR MODE =================
 st.sidebar.title("🎙 Commentary Personality")
 commentator_mode = st.sidebar.selectbox(
     "Choose your commentator:",
-    ["Neutral Analyst",
-     "Excited IPL Commentator (Hindi)",
-     "Radio Commentator",
-     "Funny Commentator"]
+    [
+        "Neutral Analyst",
+        "Excited IPL Commentator (Hindi)",
+        "Radio Commentator",
+        "Funny Commentator"
+    ]
 )
 
-# ---------------- LOAD MODEL ----------------
+# ================= LOAD MODEL (FIXED) =================
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model(
-        "my_cricket_shot_classifier.keras",
+    model = tf.keras.models.load_model(
+        "my_cricket_shot_classifier.h5",
         compile=False
     )
+    return model
 
 model = load_model()
 
+# IMPORTANT: must match training folder names
 classes = ['cover_drive','cut','pull','sweep']
 
 display_names = {
@@ -46,13 +50,17 @@ display_names = {
     "sweep": "Sweep Shot"
 }
 
-# ---------------- COMMENTARY ----------------
+# ================= COMMENTARY =================
 def generate_commentary(label, confidence, mode):
 
     base = display_names[label]
 
     if mode == "Neutral Analyst":
-        return f"The batter executes a {base}. The AI is {confidence:.1f}% confident. Excellent balance and technique.", "en", False
+        return (
+            f"The batter executes a {base}. "
+            f"The AI is {confidence:.1f}% confident. Excellent balance and technique.",
+            "en", False
+        )
 
     elif mode == "Excited IPL Commentator (Hindi)":
         hindi_map = {
@@ -61,28 +69,33 @@ def generate_commentary(label, confidence, mode):
             "Pull Shot": "शॉर्ट बॉल पर जोरदार पुल शॉट!",
             "Sweep Shot": "बेहतरीन स्वीप शॉट खेला गया!"
         }
-        return hindi_map[base] + " दर्शक झूम उठे हैं!", "hi", False
+        return (hindi_map[base] + " दर्शक झूम उठे हैं!", "hi", False)
 
     elif mode == "Radio Commentator":
-        return f"He moves onto the front foot... meets it sweetly... and that beautiful {base} races away to the boundary.", "en", True
+        return (
+            f"He moves onto the front foot... meets it sweetly... "
+            f"and that beautiful {base} races away to the boundary!",
+            "en", True
+        )
 
-    else:  # Funny
-        return f"Ball said I am safe... batter said not today! BOOM! That {base} has been couriered directly to the boundary!", "en", False
+    else:
+        return (
+            f"Ball said I am safe... batter said not today! "
+            f"BOOM! That {base} has been couriered directly to the boundary!",
+            "en", False
+        )
 
-
-# ---------------- TEXT TO SPEECH ----------------
+# ================= TEXT TO SPEECH =================
 def create_audio(text, lang, slow):
     filename = f"audio_{uuid.uuid4().hex}.mp3"
     tts = gTTS(text=text, lang=lang, slow=slow)
     tts.save(filename)
     return filename
 
-
-# store audio in session
 if "audio_file" not in st.session_state:
     st.session_state.audio_file = None
 
-# ---------------- UPLOAD ----------------
+# ================= UPLOAD =================
 uploaded_file = st.file_uploader("Upload a cricket batting image", type=["jpg","jpeg","png"])
 
 if uploaded_file:
@@ -130,23 +143,16 @@ if uploaded_file:
         st.progress(int(confidence))
         st.markdown(f"### Confidence: **{confidence:.2f}%**")
 
-        # Generate commentary
-        commentary, lang, slow = generate_commentary(predicted_label, confidence, commentator_mode)
+        commentary, lang, slow = generate_commentary(
+            predicted_label, confidence, commentator_mode
+        )
 
         st.markdown("### 🎙 AI Commentary")
         st.info(commentary)
 
-        # Create audio when user clicks
         if st.button("🔊 Play Commentary"):
-            if st.session_state.audio_file and os.path.exists(st.session_state.audio_file):
-                os.remove(st.session_state.audio_file)
-
             audio_file = create_audio(commentary, lang, slow)
-            st.session_state.audio_file = audio_file
-
-        # Play audio
-        if st.session_state.audio_file:
-            audio_bytes = open(st.session_state.audio_file, "rb").read()
+            audio_bytes = open(audio_file, "rb").read()
             st.audio(audio_bytes, format="audio/mp3")
 
         # Feedback
