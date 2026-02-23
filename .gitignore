@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+venv/
+dataset/
+*.mp3
+dataset.zip
