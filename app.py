@@ -7,6 +7,8 @@ from gtts import gTTS
 import tempfile
 import uuid
 import os
+import random
+from PIL import Image
 
 # ================= PAGE =================
 st.set_page_config(page_title="CrickGPT", page_icon="🏏", layout="wide")
@@ -29,18 +31,15 @@ commentator_mode = st.sidebar.selectbox(
     ]
 )
 
-# ================= LOAD MODEL (FIXED) =================
+# ================= LOAD MODEL =================
 @st.cache_resource
 def load_model():
-    model = tf.keras.models.load_model(
-        "my_cricket_shot_classifier.h5",
-        compile=False
-    )
+    model = tf.keras.models.load_model("my_cricket_shot_classifier.h5", compile=False)
     return model
 
 model = load_model()
 
-# IMPORTANT: must match training folder names
+# Classes
 classes = ['cover_drive','cut','pull','sweep']
 
 display_names = {
@@ -56,11 +55,7 @@ def generate_commentary(label, confidence, mode):
     base = display_names[label]
 
     if mode == "Neutral Analyst":
-        return (
-            f"The batter executes a {base}. "
-            f"The AI is {confidence:.1f}% confident. Excellent balance and technique.",
-            "en", False
-        )
+        return f"The batter executes a {base}. The AI is {confidence:.1f}% confident. Excellent balance and technique.", "en", False
 
     elif mode == "Excited IPL Commentator (Hindi)":
         hindi_map = {
@@ -69,21 +64,13 @@ def generate_commentary(label, confidence, mode):
             "Pull Shot": "शॉर्ट बॉल पर जोरदार पुल शॉट!",
             "Sweep Shot": "बेहतरीन स्वीप शॉट खेला गया!"
         }
-        return (hindi_map[base] + " दर्शक झूम उठे हैं!", "hi", False)
+        return hindi_map[base] + " दर्शक झूम उठे हैं!", "hi", False
 
     elif mode == "Radio Commentator":
-        return (
-            f"He moves onto the front foot... meets it sweetly... "
-            f"and that beautiful {base} races away to the boundary!",
-            "en", True
-        )
+        return f"He moves onto the front foot... meets it sweetly... and that beautiful {base} races away to the boundary!", "en", True
 
     else:
-        return (
-            f"Ball said I am safe... batter said not today! "
-            f"BOOM! That {base} has been couriered directly to the boundary!",
-            "en", False
-        )
+        return f"Ball said I am safe... batter said not today! BOOM! That {base} has been couriered directly to the boundary!", "en", False
 
 # ================= TEXT TO SPEECH =================
 def create_audio(text, lang, slow):
@@ -92,19 +79,18 @@ def create_audio(text, lang, slow):
     tts.save(filename)
     return filename
 
-if "audio_file" not in st.session_state:
-    st.session_state.audio_file = None
+# ================= IMAGE PREDICTION =================
+st.header("📷 Upload Image to Detect Shot")
 
-# ================= UPLOAD =================
 uploaded_file = st.file_uploader("Upload a cricket batting image", type=["jpg","jpeg","png"])
 
 if uploaded_file:
 
     col1, col2 = st.columns([1,1])
 
-    # LEFT IMAGE
+    # LEFT
     with col1:
-        st.subheader("📸 Uploaded Image")
+        st.subheader("Uploaded Image")
         st.image(uploaded_file, use_container_width=True)
 
     # PREPROCESS
@@ -117,24 +103,19 @@ if uploaded_file:
     img_array = preprocess_input(img_array)
     img_array = np.expand_dims(img_array, axis=0)
 
-    # PREDICT
+    # PREDICTION
     prediction = model.predict(img_array)[0]
     predicted_index = np.argmax(prediction)
     confidence = prediction[predicted_index] * 100
     predicted_label = classes[predicted_index]
 
-    # RIGHT PANEL
+    # RIGHT
     with col2:
-
-        st.subheader("🤖 AI Analysis")
+        st.subheader("AI Analysis")
 
         st.markdown(f"""
-        <div style="
-            background-color:#141a26;
-            padding:25px;
-            border-radius:15px;
-            border: 2px solid #00ff9c;">
-        <h2 style="color:#00ff9c; text-align:center;">
+        <div style="background-color:#141a26;padding:25px;border-radius:15px;border: 2px solid #00ff9c;">
+        <h2 style="color:#00ff9c;text-align:center;">
         {display_names[predicted_label]}
         </h2>
         </div>
@@ -143,9 +124,7 @@ if uploaded_file:
         st.progress(int(confidence))
         st.markdown(f"### Confidence: **{confidence:.2f}%**")
 
-        commentary, lang, slow = generate_commentary(
-            predicted_label, confidence, commentator_mode
-        )
+        commentary, lang, slow = generate_commentary(predicted_label, confidence, commentator_mode)
 
         st.markdown("### 🎙 AI Commentary")
         st.info(commentary)
@@ -155,10 +134,36 @@ if uploaded_file:
             audio_bytes = open(audio_file, "rb").read()
             st.audio(audio_bytes, format="audio/mp3")
 
-        # Feedback
         if confidence > 85:
             st.success("🔥 Perfect Recognition!")
         elif confidence > 65:
             st.warning("👍 Pretty sure about this shot.")
         else:
             st.error("🤔 Not fully confident. Try a clearer image.")
+
+# ================= SHOT VISUALIZER =================
+st.markdown("---")
+st.header("📚 Cricket Shot Visual Guide")
+
+DATASET_PATH = "datasets"
+
+shot_choice = st.selectbox("Choose a shot to see example:", classes)
+
+if st.button("Show Example Shot"):
+
+    class_dir = os.path.join(DATASET_PATH, shot_choice)
+
+    if not os.path.exists(class_dir):
+        st.error("Dataset folder not found in GitHub repository.")
+    else:
+        images = [f for f in os.listdir(class_dir) if f.lower().endswith((".jpg",".jpeg",".png"))]
+
+        if len(images) == 0:
+            st.warning("No images inside this class.")
+        else:
+            chosen = random.choice(images)
+            img_path = os.path.join(class_dir, chosen)
+
+            img = Image.open(img_path)
+
+            st.image(img, caption=f"Example of {display_names[shot_choice]}", use_container_width=True)
